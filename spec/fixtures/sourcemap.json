@@ -1,0 +1,46 @@
+{
+  "name": "game",
+  "className": "DataModel",
+  "children": [
+    {
+      "name": "ServerScriptService",
+      "className": "ServerScriptService",
+      "children": [
+        {
+          "name": "Combat",
+          "className": "Folder",
+          "children": [
+            {
+              "name": "Weapon",
+              "className": "ModuleScript",
+              "filePaths": ["src/server/Combat/Weapon.luau"],
+              "children": [
+                {
+                  "name": "Hitbox Util",
+                  "className": "ModuleScript",
+                  "filePaths": ["src/server/Combat/HitboxUtil.luau"]
+                }
+              ]
+            },
+            {
+              "name": "Main",
+              "className": "Script",
+              "filePaths": ["src/server/Combat/Main.server.luau"]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ReplicatedStorage",
+      "className": "ReplicatedStorage",
+      "children": [
+        {
+          "name": "Shared",
+          "className": "Folder",
+          "children": []
+        }
+      ]
+    }
+  ]
+}

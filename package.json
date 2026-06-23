@@ -1,0 +1,48 @@
+{
+  "name": "@bloxtools/mcp-server",
+  "version": "0.1.0",
+  "description": "BloxTools MCP server — a local stdio server that makes an agent a first-class BloxTools client (orient, drill, decrypt source, triage).",
+  "type": "module",
+  "license": "MIT",
+  "author": "BloxTools",
+  "homepage": "https://github.com/bloxtoolsio/bloxtools-mcp#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bloxtoolsio/bloxtools-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/bloxtoolsio/bloxtools-mcp/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "roblox",
+    "bloxtools",
+    "error-monitoring",
+    "ai-agent"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "bloxtools-mcp": "server.js"
+  },
+  "files": [
+    "server.js",
+    "src/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test spec/handlers.suite.js",
+    "seam": "node spec/inspector.mjs"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^3.25.0"
+  }
+}
