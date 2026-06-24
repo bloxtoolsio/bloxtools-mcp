@@ -20,6 +20,18 @@ export class ApiError extends Error {
 /** A 404 from the API — distinguishable so callers can degrade gracefully. */
 export const isNotFound = (err) => err instanceof ApiError && err.status === 404;
 
+/**
+ * A 403 `plan_required` gate (e.g. the performance read endpoints on a free /
+ * downgraded account). Distinguishable so callers can degrade gracefully into a
+ * `{ planRequired, ... }` payload instead of surfacing a raw error. The backend
+ * returns `{ feature, requiredPlan, plan }` alongside HTTP 403; we match either
+ * the standard message text or the carried 403 status.
+ */
+export const isPlanRequired = (err) =>
+  err instanceof ApiError &&
+  err.status === 403 &&
+  /plan[_ ]?required|requires? .*plan|upgrade/i.test(String(err.message ?? ''));
+
 export function createApiClient({ apiUrl, pat, fetchImpl = fetch }) {
   const base = String(apiUrl).replace(/\/+$/, '');
 
@@ -63,8 +75,14 @@ export function createApiClient({ apiUrl, pat, fetchImpl = fetch }) {
     }
 
     if (!res.ok) {
+      // The backend renders every error as `{ error: { code, message, details } }`,
+      // so pull the nested human message first. Fall back to a string `error`
+      // (the JSON-parse-failure case below) or a top-level `message`.
+      const err = payload && payload.error;
       const message =
-        (payload && (payload.error || payload.message)) || `HTTP ${res.status}`;
+        (err && typeof err === 'object' ? err.message : err) ||
+        (payload && payload.message) ||
+        `HTTP ${res.status}`;
       throw new ApiError(res.status, message, { hint: hintFor(res.status) });
     }
     return payload;

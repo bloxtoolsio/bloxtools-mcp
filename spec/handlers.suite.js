@@ -23,7 +23,9 @@ import { getErrorDigest } from '../src/tools/digest.js';
 import { getSourceContext } from '../src/tools/source-context.js';
 import { resolveInstancePathTool } from '../src/tools/sourcemap-tool.js';
 import { listReports, getReport, listIssues, getIssue, getAlertLog } from '../src/tools/reports.js';
+import { getPerformanceDigest, getPerformanceSeries } from '../src/tools/performance.js';
 import { setErrorGroupStatus, setReportStatus, setIssueStatus } from '../src/tools/writes.js';
+import { ApiError, createApiClient, isPlanRequired } from '../src/api.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const dash = makeDashLinks('http://localhost:3001');
@@ -242,6 +244,164 @@ test('get_alert_log: never unmasks; webhook URL not present', async () => {
   assert.equal(out.items[0].ruleType, 'new_group');
   const json = JSON.stringify(out);
   assert.ok(!/discord\.com|webhooks/i.test(json), 'no webhook URL leaks into alert log output');
+});
+
+// ── performance: digest + series (Track A read contract) ──────────────────────
+const PERF_PATH = 'GET /api/games/' + GAME + '/performance';
+
+function perfPayload() {
+  return {
+    summary: {
+      frameP95Ms: 18.4321,
+      memAvgMb: 512.5,
+      memMaxMb: 904.2,
+      physicsFpsAvg: 58.9,
+      crashCount: 3,
+      crashRatePerHour: 0.25,
+      ccuAvg: 42.3,
+      ccuPeak: 88,
+    },
+    series: [
+      { t: 1718000000, frameP50: 12.1, frameP95: 18.4, memAvg: 510, memMax: 900, netRecv: 120, netSend: 64, physicsFps: 59, ccu: 40 },
+      { t: 1718003600, frameP50: 13.0, frameP95: 22.7, memAvg: 540, memMax: 950, netRecv: 130, netSend: 70, physicsFps: 57, ccu: 45 },
+    ],
+    clientByPlatform: [
+      { platform: 'PC', fpsP50: 60, fpsP10: 48, pingP50: 55, pingP95: 120, memP50: 400, samples: 120 },
+      { platform: 'Mobile', fpsP50: 34, fpsP10: 21, pingP50: 90, pingP95: 210, memP50: 320, samples: 60 },
+    ],
+    topMarks: [
+      { name: 'EnemyAI.step', count: 4200, msP50: 1.2, msP95: 4.8, msMax: 19.3 },
+    ],
+    crashEvents: [
+      { type: 'shutdown', surface: 'server', occurredAt: 1718003000, placeVersion: 13, uptimeSec: 3600 },
+    ],
+  };
+}
+
+test('get_performance_digest: headline cards + worst platform (lowest fpsP10) + marks + crashes + dashUrl', async () => {
+  const d = deps({
+    [PERF_PATH]: (opts) => {
+      assert.equal(opts.query.days, 7);
+      return perfPayload();
+    },
+  });
+  const out = await getPerformanceDigest.handler(d, { gameId: GAME, window: 7 });
+  // Headline cards consume Track A's summary field names verbatim, rounded.
+  assert.equal(out.summary.frameP95Ms, 18.43);
+  assert.equal(out.summary.crashCount, 3);
+  assert.equal(out.summary.crashRatePerHour, 0.25);
+  assert.equal(out.summary.ccuPeak, 88);
+  // Worst client platform = lowest fpsP10 → Mobile (21 < 48).
+  assert.equal(out.worstClientPlatform.platform, 'Mobile');
+  assert.equal(out.worstClientPlatform.fpsP10, 21);
+  assert.equal(out.topMarks[0].name, 'EnemyAI.step');
+  assert.equal(out.recentCrashes[0].type, 'shutdown');
+  assert.equal(out.dashUrl, `http://localhost:3001/games/${GAME}/performance`);
+});
+
+test('get_performance_digest: empty perf data → no worst platform, zeroed crash count, still has dashUrl', async () => {
+  const d = deps({ [PERF_PATH]: {} });
+  const out = await getPerformanceDigest.handler(d, { gameId: GAME, window: 7 });
+  assert.equal(out.worstClientPlatform, null);
+  assert.equal(out.summary.crashCount, 0);
+  assert.equal(out.topMarks.length, 0);
+  assert.equal(out.recentCrashes.length, 0);
+  assert.equal(out.dashUrl, `http://localhost:3001/games/${GAME}/performance`);
+});
+
+test('get_performance_digest: 403 plan_required → graceful degrade (planRequired payload, no throw)', async () => {
+  const d = deps({ [PERF_PATH]: new ApiError(403, 'plan_required') });
+  const out = await getPerformanceDigest.handler(d, { gameId: GAME, window: 7 });
+  assert.equal(out.planRequired, true);
+  assert.equal(out.feature, 'performance');
+  assert.equal(out.requiredPlan, 'pro');
+  assert.match(out.hint, /performance/i);
+  assert.equal(out.dashUrl, `http://localhost:3001/games/${GAME}/performance`);
+});
+
+test('get_performance_series: passes from/to/surface/granularity + shapes series + clientByPlatform', async () => {
+  const d = deps({
+    [PERF_PATH]: (opts) => {
+      assert.equal(opts.query.from, '2026-06-01T00:00:00Z');
+      assert.equal(opts.query.to, '2026-06-08T00:00:00Z');
+      assert.equal(opts.query.surface, 'server');
+      assert.equal(opts.query.granularity, 'hour');
+      return perfPayload();
+    },
+  });
+  const out = await getPerformanceSeries.handler(d, {
+    gameId: GAME,
+    from: '2026-06-01T00:00:00Z',
+    to: '2026-06-08T00:00:00Z',
+    surface: 'server',
+    granularity: 'hour',
+  });
+  assert.equal(out.series.length, 2);
+  assert.equal(out.series[1].frameP95, 22.7);
+  assert.equal(out.series[0].ccu, 40);
+  assert.equal(out.clientByPlatform[1].platform, 'Mobile');
+  assert.equal(out.window.surface, 'server');
+  assert.equal(out.dashUrl, `http://localhost:3001/games/${GAME}/performance`);
+});
+
+test('get_performance_series: 403 plan_required → graceful degrade', async () => {
+  const d = deps({ [PERF_PATH]: new ApiError(403, 'plan_required') });
+  const out = await getPerformanceSeries.handler(d, { gameId: GAME, days: 7 });
+  assert.equal(out.planRequired, true);
+  assert.equal(out.dashUrl, `http://localhost:3001/games/${GAME}/performance`);
+});
+
+test('api request(): real backend {error:{code,message,details}} 403 → isPlanRequired matches', async () => {
+  // Regression: the backend renders errors as a NESTED object, not a flat string.
+  // The handler mocks above throw `new ApiError(403, 'plan_required')` directly and
+  // never exercise request()'s serialization — so this drives the REAL client against
+  // the real body to prove the message is the human string (not "[object Object]").
+  const body = JSON.stringify({
+    error: {
+      code: 'plan_required',
+      message: 'This feature (performance) requires the pro plan. Upgrade to unlock it.',
+      details: { feature: 'performance', requiredPlan: 'pro', plan: 'free' },
+    },
+  });
+  const fetchImpl = async () => ({ ok: false, status: 403, text: async () => body });
+  const client = createApiClient({ apiUrl: 'http://localhost:3001', pat: 'blxt_x', fetchImpl });
+  await assert.rejects(
+    () => client.get(`/api/games/${GAME}/performance`),
+    (err) => {
+      assert.equal(isPlanRequired(err), true);
+      assert.match(err.message, /Upgrade/);
+      assert.doesNotMatch(err.message, /\[object Object\]/);
+      return true;
+    },
+  );
+});
+
+test('performance tools: no PAT or project key leaks into output', async () => {
+  const d = deps({ [PERF_PATH]: perfPayload() });
+  const dg = await getPerformanceDigest.handler(d, { gameId: GAME, window: 7 });
+  const sr = await getPerformanceSeries.handler(d, { gameId: GAME, days: 7 });
+  for (const out of [dg, sr]) {
+    const json = JSON.stringify(out);
+    assert.ok(!json.includes('Bearer'), 'no Authorization header echoed');
+    assert.ok(!json.includes(KEY), 'no project key echoed');
+    assert.ok(!/blxt?_/.test(json), 'no PAT-shaped token echoed');
+  }
+});
+
+test('get_overview: folds per-game perf headline (frameP95Ms + crashRatePerHour)', async () => {
+  const d = deps({
+    'GET /api/overview': {
+      window: { days: 14 },
+      totals: { errorEvents: 0, openErrorGroups: 0, total: 0, open: 0 },
+      games: [
+        { id: GAME, name: 'Demo', perf: { frameP95Ms: 21.5, crashRatePerHour: 0.4 } },
+        { id: 'g2', name: 'NoPerf' }, // perf absent → null
+      ],
+    },
+  });
+  const out = await getOverview.handler(d, { days: 14 });
+  assert.deepEqual(out.games[0].perf, { frameP95Ms: 21.5, crashRatePerHour: 0.4 });
+  assert.equal(out.games[1].perf, null);
 });
 
 // ── digest composition ────────────────────────────────────────────────────────

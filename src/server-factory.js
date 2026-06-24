@@ -9,11 +9,14 @@ import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mc
 import { z } from 'zod';
 
 import { READ_TOOLS, WRITE_TOOLS } from './tools/index.js';
-import { triageErrorsPrompt, fixTopCrashPrompt } from './prompts.js';
+import { triageErrorsPrompt, fixTopCrashPrompt, performanceReviewPrompt } from './prompts.js';
 import {
   ERRORS_URI_TEMPLATE,
   makeErrorsResourceList,
   makeErrorsResourceRead,
+  PERFORMANCE_URI_TEMPLATE,
+  makePerformanceResourceList,
+  makePerformanceResourceRead,
 } from './resources.js';
 
 const SERVER_INFO = { name: 'bloxtools', version: '0.1.0' };
@@ -115,6 +118,27 @@ export function buildServer(deps, scope) {
     }),
   );
 
+  server.registerPrompt(
+    'performance_review',
+    {
+      title: 'Review performance',
+      description:
+        'Orient on perf health (digest), single out the worst client platform, chart the trend (series), and propose concrete perf fixes.',
+      argsSchema: {
+        gameId: z.string().optional().describe('Game id; omit to have the agent pick via list_games.'),
+        window: z.string().optional().describe('Look-back window in days, e.g. 7, 30 (default 7).'),
+      },
+    },
+    ({ gameId, window }) => ({
+      messages: [
+        {
+          role: 'user',
+          content: { type: 'text', text: performanceReviewPrompt({ gameId, window }) },
+        },
+      ],
+    }),
+  );
+
   // Resource: per-game open-errors snapshot, listed dynamically from list_games.
   server.registerResource(
     'game-errors',
@@ -127,6 +151,20 @@ export function buildServer(deps, scope) {
       mimeType: 'application/json',
     },
     makeErrorsResourceRead(deps.client, deps.dash),
+  );
+
+  // Resource: per-game performance digest snapshot, listed dynamically from list_games.
+  server.registerResource(
+    'game-performance',
+    new ResourceTemplate(PERFORMANCE_URI_TEMPLATE, {
+      list: makePerformanceResourceList(deps.client, deps.dash),
+    }),
+    {
+      title: 'Performance digest snapshot',
+      description: 'Current performance digest (headline cards, worst platform, top marks) for a game, as JSON.',
+      mimeType: 'application/json',
+    },
+    makePerformanceResourceRead(deps.client, deps.dash),
   );
 
   return { server, toolNames };

@@ -37,8 +37,11 @@ export const getOverview = {
   title: 'Account overview tallies',
   description:
     'Account-wide tallies across all games for a window (default 14 days): error events, open ' +
-    'error groups, player reports, and per-game rollups. Use it for a portfolio-level "how are ' +
-    'things overall" answer. For "what changed since yesterday" on one game, prefer get_error_digest.',
+    'error groups, player reports, and per-game rollups. Each game also carries a `perf` headline ' +
+    '({ frameP95Ms, crashRatePerHour }, null when no perf data / not gated) so you can spot ' +
+    'perf-hot games across the portfolio — drill in with get_performance_digest. Use it for a ' +
+    'portfolio-level "how are things overall" answer. For "what changed since yesterday" on one ' +
+    'game, prefer get_error_digest.',
   inputSchema: {
     days: z
       .number()
@@ -70,6 +73,12 @@ export const getOverview = {
         openReports: g.open ?? 0,
         last24h: g.last24h ?? 0,
         spike: g.spike ?? null,
+        perf: g.perf
+          ? {
+              frameP95Ms: g.perf.frameP95Ms ?? null,
+              crashRatePerHour: g.perf.crashRatePerHour ?? null,
+            }
+          : null,
         sample: previewText(g.name),
         dashUrl: dash.errors(g.id),
       })),
