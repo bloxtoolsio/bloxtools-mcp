@@ -7,16 +7,16 @@
  * we print to stderr is scrubbed of the token and key material.
  *
  * Env names:
- *   BLOXTOOLS_API_URL          default http://localhost:3000
+ *   BLOXTOOLS_API_URL          default https://bloxtools-backend-production.up.railway.app
  *   BLOXTOOLS_PAT              required (blxt_…)
- *   BLOXTOOLS_DASH_URL         default http://localhost:3001 (drives deep links)
+ *   BLOXTOOLS_DASH_URL         default https://bloxtools.io (drives deep links)
  *   BLOXTOOLS_PROJECT_KEYS     JSON { "<gameId>": "<base64key>" }  (local decrypt)
  *   BLOXTOOLS_PROJECT_KEY_<id> per-game key, gameId with dashes stripped
  *   BLOXTOOLS_SOURCEMAP        path to a Rojo sourcemap.json (optional)
  */
 
-const DEFAULT_API_URL = 'http://localhost:3000';
-const DEFAULT_DASH_URL = 'http://localhost:3001';
+const DEFAULT_API_URL = 'https://bloxtools-backend-production.up.railway.app';
+const DEFAULT_DASH_URL = 'https://bloxtools.io';
 const DEFAULT_SOURCEMAP = './sourcemap.json';
 
 const stripTrailingSlash = (u) => String(u).replace(/\/+$/, '');

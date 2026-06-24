@@ -19,28 +19,48 @@ games. See also the companion Studio plugin,
 ## What you need
 
 1. A **BloxTools account** — sign up at [https://bloxtools.io](https://bloxtools.io).
-2. A **Personal Access Token (PAT)** — mint one in the dashboard. It starts with `blxt_`. Give it
-   the `read` scope; add `manage` if you want the agent to be able to triage (change statuses).
-3. *(Optional, for decrypting source context)* the per-game **project key** BloxTools generated
-   when you set up source upload, and the path to your Rojo `sourcemap.json`.
+2. Your **access token** — the dashboard auto-provisions a single combined token (starts with
+   `blxt_`, already scoped read + upload + manage) and shows it on your setup page. The same token
+   powers both the Studio plugin and this MCP server — there's no scope to pick. Copy it into
+   `BLOXTOOLS_PAT`.
+
+That's everything required. Two **optional** features can be layered on later (see
+[Optional: decrypt source & resolve paths](#optional-decrypt-source--resolve-paths)).
 
 ## Install / connect
 
 The package is published to npm, so you don't need to clone anything — `npx` will fetch and run it.
+The production API and dashboard URLs are **baked into the package as defaults**, so the only
+variable you must set is `BLOXTOOLS_PAT`. Pick your client:
 
-### Claude Code / Claude Desktop (CLI)
+<details>
+<summary><b>Claude Code (CLI)</b></summary>
 
 ```bash
-claude mcp add bloxtools \
-  --env BLOXTOOLS_PAT=blxt_your_token_here \
-  --env BLOXTOOLS_API_URL=https://bloxtools-backend-production.up.railway.app \
-  --env BLOXTOOLS_DASH_URL=https://bloxtools.io \
-  --env BLOXTOOLS_PROJECT_KEYS='{"<gameId>":"<44-char-base64-key>"}' \
-  --env BLOXTOOLS_SOURCEMAP=/path/to/your/sourcemap.json \
-  -- npx -y @bloxtools/mcp-server
+claude mcp add bloxtools -e BLOXTOOLS_PAT=blxt_your_token -- npx -y @bloxtools/mcp-server
 ```
 
-### `.mcp.json` / config-block form
+Optional — add one (or both) of the independent extras (see notes below):
+
+```bash
+# Decrypt plugin-uploaded source for one game (project key):
+claude mcp add bloxtools \
+  -e BLOXTOOLS_PAT=blxt_your_token \
+  -e BLOXTOOLS_PROJECT_KEY_<gameId>=<44-char-base64-key> \
+  -- npx -y @bloxtools/mcp-server
+
+# Resolve instance paths to local files (Rojo sourcemap):
+claude mcp add bloxtools \
+  -e BLOXTOOLS_PAT=blxt_your_token \
+  -e BLOXTOOLS_SOURCEMAP=/path/to/your/sourcemap.json \
+  -- npx -y @bloxtools/mcp-server
+```
+</details>
+
+<details>
+<summary><b>Claude Desktop (GUI)</b></summary>
+
+Edit `claude_desktop_config.json` (Settings → Developer → Edit Config) and add:
 
 ```json
 {
@@ -49,27 +69,98 @@ claude mcp add bloxtools \
       "command": "npx",
       "args": ["-y", "@bloxtools/mcp-server"],
       "env": {
-        "BLOXTOOLS_PAT": "blxt_your_token_here",
-        "BLOXTOOLS_API_URL": "https://bloxtools-backend-production.up.railway.app",
-        "BLOXTOOLS_DASH_URL": "https://bloxtools.io",
-        "BLOXTOOLS_PROJECT_KEYS": "{\"<gameId>\":\"<44-char-base64-key>\"}",
-        "BLOXTOOLS_SOURCEMAP": "/path/to/your/sourcemap.json"
+        "BLOXTOOLS_PAT": "blxt_your_token"
       }
     }
   }
 }
 ```
 
+Optional extras — add either/both to the `env` block (independent features, see notes below):
+
+```json
+"env": {
+  "BLOXTOOLS_PAT": "blxt_your_token",
+  "BLOXTOOLS_PROJECT_KEY_<gameId>": "<44-char-base64-key>",
+  "BLOXTOOLS_SOURCEMAP": "/path/to/your/sourcemap.json"
+}
+```
+</details>
+
+<details>
+<summary><b>Codex (CLI + GUI)</b></summary>
+
+Add an `[mcp_servers.bloxtools]` table to `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.bloxtools]
+command = "npx"
+args = ["-y", "@bloxtools/mcp-server"]
+env = { BLOXTOOLS_PAT = "blxt_your_token" }
+```
+
+Optional extras — add either/both to the `env` table (independent features, see notes below):
+
+```toml
+[mcp_servers.bloxtools]
+command = "npx"
+args = ["-y", "@bloxtools/mcp-server"]
+env = { BLOXTOOLS_PAT = "blxt_your_token", BLOXTOOLS_PROJECT_KEY_<gameId> = "<44-char-base64-key>", BLOXTOOLS_SOURCEMAP = "/path/to/your/sourcemap.json" }
+```
+</details>
+
+<details>
+<summary><b>Cursor / Windsurf / VS Code</b></summary>
+
+These editors share the `{"mcpServers": {...}}` config shape (Cursor: `~/.cursor/mcp.json`;
+Windsurf: `~/.codeium/windsurf/mcp_config.json`; VS Code: `.vscode/mcp.json` or user settings):
+
+```json
+{
+  "mcpServers": {
+    "bloxtools": {
+      "command": "npx",
+      "args": ["-y", "@bloxtools/mcp-server"],
+      "env": {
+        "BLOXTOOLS_PAT": "blxt_your_token"
+      }
+    }
+  }
+}
+```
+
+Optional extras — add either/both to the `env` block (independent features, see notes below):
+
+```json
+"env": {
+  "BLOXTOOLS_PAT": "blxt_your_token",
+  "BLOXTOOLS_PROJECT_KEY_<gameId>": "<44-char-base64-key>",
+  "BLOXTOOLS_SOURCEMAP": "/path/to/your/sourcemap.json"
+}
+```
+</details>
+
+### Optional: decrypt source & resolve paths
+
+`BLOXTOOLS_PROJECT_KEY_<gameId>` and `BLOXTOOLS_SOURCEMAP` are **two independent, optional
+features** — set neither, either, or both:
+
+- **`BLOXTOOLS_PROJECT_KEY_<gameId>`** (project key) — decrypts the source the **plugin uploaded**
+  so `get_source_context` can show the real lines around a crash. `<gameId>` is your gameId with
+  dashes stripped. Copy the key from the dashboard.
+- **`BLOXTOOLS_SOURCEMAP`** (Rojo sourcemap) — feeds the separate **`resolve_instance_path`** tool,
+  mapping a crashing instance path to a local file on disk.
+
 ## Environment variables
 
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
-| `BLOXTOOLS_PAT` | **yes** | — | Personal Access Token (`blxt_…`). Mint **read** (+ **manage** for triage writes) in the dashboard. |
-| `BLOXTOOLS_API_URL` | recommended | `http://localhost:3000` | BloxTools API base URL. For the hosted service use `https://bloxtools-backend-production.up.railway.app`. |
-| `BLOXTOOLS_DASH_URL` | recommended | `http://localhost:3001` | Dashboard base URL; drives the `dashUrl` deep links in every payload. For the hosted dashboard use `https://bloxtools.io`. |
-| `BLOXTOOLS_PROJECT_KEYS` | for source decrypt | — | JSON map `{ "<gameId>": "<base64key>" }` of per-game project keys. |
-| `BLOXTOOLS_PROJECT_KEY_<id>` | for source decrypt | — | Per-game key; `<id>` is the gameId with dashes stripped. Wins over the JSON map. |
-| `BLOXTOOLS_SOURCEMAP` | for `resolve_instance_path` | `./sourcemap.json` (if present) | Path to a Rojo `sourcemap.json`. |
+| `BLOXTOOLS_PAT` | **yes** | — | Combined access token (`blxt_…`), auto-minted in the dashboard (read + upload + manage). |
+| `BLOXTOOLS_API_URL` | optional | `https://bloxtools-backend-production.up.railway.app` | BloxTools API base URL. Defaulted to the hosted service; override only for self-hosting/local dev. |
+| `BLOXTOOLS_DASH_URL` | optional | `https://bloxtools.io` | Dashboard base URL; drives the `dashUrl` deep links in every payload. Defaulted to the hosted dashboard. |
+| `BLOXTOOLS_PROJECT_KEYS` | optional (source decrypt) | — | JSON map `{ "<gameId>": "<base64key>" }` of per-game project keys. |
+| `BLOXTOOLS_PROJECT_KEY_<id>` | optional (source decrypt) | — | Per-game key; `<id>` is the gameId with dashes stripped. Wins over the JSON map. |
+| `BLOXTOOLS_SOURCEMAP` | optional (`resolve_instance_path`) | `./sourcemap.json` (if present) | Path to a Rojo `sourcemap.json`. |
 
 The PAT and project keys are **secrets**. They are read from env, used only to authenticate to the
 API (PAT) and to decrypt locally (keys), and are **never** logged, echoed, or placed in any tool
