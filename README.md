@@ -31,36 +31,9 @@ That's everything required. Two **optional** features can be layered on later (s
 
 The package is published to npm, so you don't need to clone anything — `npx` will fetch and run it.
 The production API and dashboard URLs are **baked into the package as defaults**, so the only
-variable you must set is `BLOXTOOLS_PAT`. Pick your client:
+variable you must set is `BLOXTOOLS_PAT`.
 
-<details>
-<summary><b>Claude Code (CLI)</b></summary>
-
-```bash
-claude mcp add bloxtools -e BLOXTOOLS_PAT=blxt_your_token -- npx -y @bloxtools/mcp-server
-```
-
-Optional — add one (or both) of the independent extras (see notes below):
-
-```bash
-# Decrypt plugin-uploaded source for one game (project key):
-claude mcp add bloxtools \
-  -e BLOXTOOLS_PAT=blxt_your_token \
-  -e BLOXTOOLS_PROJECT_KEY_<gameId>=<44-char-base64-key> \
-  -- npx -y @bloxtools/mcp-server
-
-# Resolve instance paths to local files (Rojo sourcemap):
-claude mcp add bloxtools \
-  -e BLOXTOOLS_PAT=blxt_your_token \
-  -e BLOXTOOLS_SOURCEMAP=/path/to/your/sourcemap.json \
-  -- npx -y @bloxtools/mcp-server
-```
-</details>
-
-<details>
-<summary><b>Claude Desktop (GUI)</b></summary>
-
-Edit `claude_desktop_config.json` (Settings → Developer → Edit Config) and add:
+Almost every client uses the **same** `mcpServers` JSON block — only the file location differs:
 
 ```json
 {
@@ -68,29 +41,31 @@ Edit `claude_desktop_config.json` (Settings → Developer → Edit Config) and a
     "bloxtools": {
       "command": "npx",
       "args": ["-y", "@bloxtools/mcp-server"],
-      "env": {
-        "BLOXTOOLS_PAT": "blxt_your_token"
-      }
+      "env": { "BLOXTOOLS_PAT": "blxt_your_token" }
     }
   }
 }
 ```
 
-Optional extras — add either/both to the `env` block (independent features, see notes below):
+> **Tip:** the BloxTools dashboard setup page has a client picker with **1-click install** buttons
+> for Cursor, VS Code, Kiro, and Goose (and the token pre-filled). The blocks below are the manual
+> equivalents. For the optional source-decrypt / sourcemap extras, add the env vars described in
+> [Optional: decrypt source & resolve paths](#optional-decrypt-source--resolve-paths) to the `env`.
 
-```json
-"env": {
-  "BLOXTOOLS_PAT": "blxt_your_token",
-  "BLOXTOOLS_PROJECT_KEY_<gameId>": "<44-char-base64-key>",
-  "BLOXTOOLS_SOURCEMAP": "/path/to/your/sourcemap.json"
-}
+### AI Agent CLI
+
+<details>
+<summary><b>Claude Code</b></summary>
+
+```bash
+claude mcp add bloxtools -e BLOXTOOLS_PAT=blxt_your_token -- npx -y @bloxtools/mcp-server
 ```
 </details>
 
 <details>
-<summary><b>Codex (CLI + GUI)</b></summary>
+<summary><b>Codex</b></summary>
 
-Add an `[mcp_servers.bloxtools]` table to `~/.codex/config.toml`:
+TOML — add an `[mcp_servers.bloxtools]` table to `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.bloxtools]
@@ -99,45 +74,129 @@ args = ["-y", "@bloxtools/mcp-server"]
 env = { BLOXTOOLS_PAT = "blxt_your_token" }
 ```
 
-Optional extras — add either/both to the `env` table (independent features, see notes below):
+Or via the CLI: `codex mcp add bloxtools --env BLOXTOOLS_PAT=blxt_your_token -- npx -y @bloxtools/mcp-server`
+</details>
 
-```toml
-[mcp_servers.bloxtools]
-command = "npx"
-args = ["-y", "@bloxtools/mcp-server"]
-env = { BLOXTOOLS_PAT = "blxt_your_token", BLOXTOOLS_PROJECT_KEY_<gameId> = "<44-char-base64-key>", BLOXTOOLS_SOURCEMAP = "/path/to/your/sourcemap.json" }
+<details>
+<summary><b>Gemini CLI</b></summary>
+
+Add the standard `mcpServers` block to `~/.gemini/settings.json` (or `.gemini/settings.json` in a project).
+</details>
+
+<details>
+<summary><b>GitHub Copilot</b></summary>
+
+Add the standard `mcpServers` block to `~/.copilot/mcp-config.json`.
+
+Or via the CLI: `copilot mcp add bloxtools --env BLOXTOOLS_PAT=blxt_your_token -- npx -y @bloxtools/mcp-server`
+</details>
+
+<details>
+<summary><b>opencode</b></summary>
+
+opencode uses a different schema (`mcp`, command as an array, `environment`) — add to `opencode.json`
+(or `~/.config/opencode/opencode.json`):
+
+```json
+{
+  "mcp": {
+    "bloxtools": {
+      "type": "local",
+      "command": ["npx", "-y", "@bloxtools/mcp-server"],
+      "enabled": true,
+      "environment": { "BLOXTOOLS_PAT": "blxt_your_token" }
+    }
+  }
+}
 ```
 </details>
 
 <details>
-<summary><b>Cursor / Windsurf / VS Code</b></summary>
+<summary><b>Factory</b></summary>
 
-These editors share the `{"mcpServers": {...}}` config shape (Cursor: `~/.cursor/mcp.json`;
-Windsurf: `~/.codeium/windsurf/mcp_config.json`; VS Code: `.vscode/mcp.json` or user settings):
+Add the standard `mcpServers` block to `~/.factory/mcp.json` (or `.factory/mcp.json` in a project).
+
+Or via the CLI: `droid mcp add bloxtools "npx -y @bloxtools/mcp-server" --env BLOXTOOLS_PAT=blxt_your_token`
+</details>
+
+### Desktop apps
+
+<details>
+<summary><b>Claude Desktop</b></summary>
+
+Edit `claude_desktop_config.json` (Settings → Developer → Edit Config), add the standard
+`mcpServers` block, then restart the app.
+</details>
+
+<details>
+<summary><b>Goose</b></summary>
+
+Goose is YAML — add an entry under `extensions:` in `~/.config/goose/config.yaml`:
+
+```yaml
+extensions:
+  bloxtools:
+    enabled: true
+    type: stdio
+    cmd: npx
+    args:
+      - -y
+      - "@bloxtools/mcp-server"
+    envs:
+      BLOXTOOLS_PAT: blxt_your_token
+```
+
+Or run `goose configure` → Add Extension → Command-line Extension. The dashboard also offers a
+`goose://` 1-click install.
+</details>
+
+### IDE
+
+<details>
+<summary><b>Cursor</b></summary>
+
+Add the standard `mcpServers` block to `~/.cursor/mcp.json` (global) or `.cursor/mcp.json` (project).
+The dashboard offers a 1-click `cursor://` install.
+</details>
+
+<details>
+<summary><b>VS Code</b> (GitHub Copilot agent)</summary>
+
+VS Code's top-level key is **`servers`** (not `mcpServers`) — add to `.vscode/mcp.json`:
 
 ```json
 {
-  "mcpServers": {
+  "servers": {
     "bloxtools": {
       "command": "npx",
       "args": ["-y", "@bloxtools/mcp-server"],
-      "env": {
-        "BLOXTOOLS_PAT": "blxt_your_token"
-      }
+      "env": { "BLOXTOOLS_PAT": "blxt_your_token" }
     }
   }
 }
 ```
 
-Optional extras — add either/both to the `env` block (independent features, see notes below):
+The dashboard offers a 1-click `vscode:mcp/install` button. CLI alternative:
+`code --add-mcp '{"name":"bloxtools","command":"npx","args":["-y","@bloxtools/mcp-server"]}'`
+</details>
 
-```json
-"env": {
-  "BLOXTOOLS_PAT": "blxt_your_token",
-  "BLOXTOOLS_PROJECT_KEY_<gameId>": "<44-char-base64-key>",
-  "BLOXTOOLS_SOURCEMAP": "/path/to/your/sourcemap.json"
-}
-```
+<details>
+<summary><b>Antigravity</b></summary>
+
+Add the standard `mcpServers` block to `~/.gemini/config/mcp_config.json`.
+</details>
+
+<details>
+<summary><b>Kiro</b></summary>
+
+Add the standard `mcpServers` block to `.kiro/settings/mcp.json` (or `~/.kiro/settings/mcp.json`).
+The dashboard offers a 1-click `kiro:mcp/install` button.
+</details>
+
+<details>
+<summary><b>Windsurf</b></summary>
+
+Add the standard `mcpServers` block to `~/.codeium/windsurf/mcp_config.json`.
 </details>
 
 ### Optional: decrypt source & resolve paths
@@ -150,6 +209,16 @@ features** — set neither, either, or both:
   dashes stripped. Copy the key from the dashboard.
 - **`BLOXTOOLS_SOURCEMAP`** (Rojo sourcemap) — feeds the separate **`resolve_instance_path`** tool,
   mapping a crashing instance path to a local file on disk.
+
+Add them to the same `env` block as `BLOXTOOLS_PAT`, e.g.:
+
+```json
+"env": {
+  "BLOXTOOLS_PAT": "blxt_your_token",
+  "BLOXTOOLS_PROJECT_KEY_<gameId>": "<44-char-base64-key>",
+  "BLOXTOOLS_SOURCEMAP": "/path/to/your/sourcemap.json"
+}
+```
 
 ## Environment variables
 
@@ -189,10 +258,9 @@ The server probes your PAT's scopes at startup (`GET /api/account/token-info`):
   (`set_error_group_status`, `set_report_status`, `set_issue_status`). The `manage` scope grants
   only those three triage mutations — no access to keys, tokens, or alert channels.
 
-If the PAT lacks `manage`, the write tools are **not registered at all**, so the agent never sees a
-tool it can't use. Triage writes are part of BloxTools' paid (Pro+) tiers; if your plan or token
-doesn't grant `manage`, the server simply runs read-only. (Against an older backend build that
-doesn't serve `token-info`, the server assumes **read-only** and says so on stderr.)
+The dashboard's auto-provisioned access token already carries `manage`, so all tools are available
+by default. (Against an older backend build that doesn't serve `token-info`, the server assumes
+**read-only** and says so on stderr.)
 
 ## Tools
 

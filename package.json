@@ -1,6 +1,6 @@
 {
   "name": "@bloxtools/mcp-server",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "BloxTools MCP server — a local stdio server that makes an agent a first-class BloxTools client (orient, drill, decrypt source, triage).",
   "type": "module",
   "license": "MIT",
