@@ -9,7 +9,12 @@ import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mc
 import { z } from 'zod';
 
 import { READ_TOOLS, WRITE_TOOLS } from './tools/index.js';
-import { triageErrorsPrompt, fixTopCrashPrompt, performanceReviewPrompt } from './prompts.js';
+import {
+  triageErrorsPrompt,
+  fixTopCrashPrompt,
+  performanceReviewPrompt,
+  revenueReviewPrompt,
+} from './prompts.js';
 import {
   ERRORS_URI_TEMPLATE,
   makeErrorsResourceList,
@@ -17,6 +22,9 @@ import {
   PERFORMANCE_URI_TEMPLATE,
   makePerformanceResourceList,
   makePerformanceResourceRead,
+  MONETIZATION_URI_TEMPLATE,
+  makeMonetizationResourceList,
+  makeMonetizationResourceRead,
 } from './resources.js';
 
 const SERVER_INFO = { name: 'bloxtools', version: '0.1.0' };
@@ -139,6 +147,27 @@ export function buildServer(deps, scope) {
     }),
   );
 
+  server.registerPrompt(
+    'revenue_review',
+    {
+      title: 'Review monetization',
+      description:
+        'Orient on revenue health (digest), inspect the top items + whales, chart the trend (series), and propose concrete monetization improvements.',
+      argsSchema: {
+        gameId: z.string().optional().describe('Game id; omit to have the agent pick via list_games.'),
+        window: z.string().optional().describe('Look-back window in days, e.g. 30, 90 (default 30).'),
+      },
+    },
+    ({ gameId, window }) => ({
+      messages: [
+        {
+          role: 'user',
+          content: { type: 'text', text: revenueReviewPrompt({ gameId, window }) },
+        },
+      ],
+    }),
+  );
+
   // Resource: per-game open-errors snapshot, listed dynamically from list_games.
   server.registerResource(
     'game-errors',
@@ -165,6 +194,20 @@ export function buildServer(deps, scope) {
       mimeType: 'application/json',
     },
     makePerformanceResourceRead(deps.client, deps.dash),
+  );
+
+  // Resource: per-game monetization digest snapshot, listed dynamically from list_games.
+  server.registerResource(
+    'game-monetization',
+    new ResourceTemplate(MONETIZATION_URI_TEMPLATE, {
+      list: makeMonetizationResourceList(deps.client, deps.dash),
+    }),
+    {
+      title: 'Monetization digest snapshot',
+      description: 'Current revenue digest (headline, top items, top whales) for a game, as JSON.',
+      mimeType: 'application/json',
+    },
+    makeMonetizationResourceRead(deps.client, deps.dash),
   );
 
   return { server, toolNames };

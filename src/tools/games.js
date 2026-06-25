@@ -39,9 +39,10 @@ export const getOverview = {
     'Account-wide tallies across all games for a window (default 14 days): error events, open ' +
     'error groups, player reports, and per-game rollups. Each game also carries a `perf` headline ' +
     '({ frameP95Ms, crashRatePerHour }, null when no perf data / not gated) so you can spot ' +
-    'perf-hot games across the portfolio — drill in with get_performance_digest. Use it for a ' +
-    'portfolio-level "how are things overall" answer. For "what changed since yesterday" on one ' +
-    'game, prefer get_error_digest.',
+    'perf-hot games, and a `revenue` headline ({ robux, usdEstimate }, null when no revenue data / ' +
+    'not gated; USD is an estimate) so you can spot top-earning games across the portfolio — drill ' +
+    'in with get_performance_digest / get_monetization_digest. Use it for a portfolio-level "how are ' +
+    'things overall" answer. For "what changed since yesterday" on one game, prefer get_error_digest.',
   inputSchema: {
     days: z
       .number()
@@ -77,6 +78,12 @@ export const getOverview = {
           ? {
               frameP95Ms: g.perf.frameP95Ms ?? null,
               crashRatePerHour: g.perf.crashRatePerHour ?? null,
+            }
+          : null,
+        revenue: g.revenue
+          ? {
+              robux: g.revenue.robux ?? null,
+              usdEstimate: g.revenue.usdEstimate ?? null,
             }
           : null,
         sample: previewText(g.name),

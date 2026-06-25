@@ -11,6 +11,7 @@ export function makeDashLinks(dashUrl) {
     errorGroup: (gameId, groupId) => `${base}/games/${gameId}/errors/${groupId}`,
     reports: (gameId) => `${base}/games/${gameId}/reports`,
     performance: (gameId) => `${base}/games/${gameId}/performance`,
+    monetization: (gameId) => `${base}/games/${gameId}/monetization`,
     report: (gameId, reportId) => `${base}/games/${gameId}/reports/${reportId}`,
     issues: (gameId) => `${base}/games/${gameId}/issues`,
     issue: (gameId, signature) =>

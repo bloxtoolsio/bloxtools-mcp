@@ -24,6 +24,7 @@ import { getSourceContext } from '../src/tools/source-context.js';
 import { resolveInstancePathTool } from '../src/tools/sourcemap-tool.js';
 import { listReports, getReport, listIssues, getIssue, getAlertLog } from '../src/tools/reports.js';
 import { getPerformanceDigest, getPerformanceSeries } from '../src/tools/performance.js';
+import { getMonetizationDigest, getRevenueSeries } from '../src/tools/monetization.js';
 import { setErrorGroupStatus, setReportStatus, setIssueStatus } from '../src/tools/writes.js';
 import { ApiError, createApiClient, isPlanRequired } from '../src/api.js';
 
@@ -402,6 +403,139 @@ test('get_overview: folds per-game perf headline (frameP95Ms + crashRatePerHour)
   const out = await getOverview.handler(d, { days: 14 });
   assert.deepEqual(out.games[0].perf, { frameP95Ms: 21.5, crashRatePerHour: 0.4 });
   assert.equal(out.games[1].perf, null);
+});
+
+test('get_overview: folds per-game revenue headline (robux + usdEstimate); absent → null', async () => {
+  const d = deps({
+    'GET /api/overview': {
+      window: { days: 14 },
+      totals: { errorEvents: 0, openErrorGroups: 0, total: 0, open: 0 },
+      games: [
+        { id: GAME, name: 'Earner', revenue: { robux: 125000, usdEstimate: 437.5 } },
+        { id: 'g2', name: 'NoRevenue' }, // revenue absent → null
+      ],
+    },
+  });
+  const out = await getOverview.handler(d, { days: 14 });
+  assert.deepEqual(out.games[0].revenue, { robux: 125000, usdEstimate: 437.5 });
+  assert.equal(out.games[1].revenue, null);
+});
+
+// ── monetization: digest + series (Track A read contract) ─────────────────────
+const MONEY_PATH = 'GET /api/games/' + GAME + '/monetization';
+
+function moneyPayload() {
+  return {
+    summary: {
+      robux: 125000,
+      usdEstimate: 437.5,
+      txns: 842,
+      payingUsers: 310,
+      arppuRobux: 403.2258,
+      conversionPct: null, // v1: not yet measured — must pass through honestly
+      devexRate: 0.0035,
+    },
+    series: [
+      { t: 1718000000, robux: 40000, txns: 250, payingUsers: 110 },
+      { t: 1718086400, robux: 85000, txns: 592, payingUsers: 200 },
+    ],
+    topItems: [
+      { productId: 111, kind: 'developer_product', name: '500 Gems', robux: 60000, txns: 400 },
+      { productId: 222, kind: 'gamepass', name: 'VIP', robux: 50000, txns: 100 },
+    ],
+    whales: [
+      { userId: 99001, robux: 12000, txns: 24 },
+      { userId: 99002, robux: 8000, txns: 11 },
+    ],
+  };
+}
+
+test('get_monetization_digest: headline + top items + top whales (passthrough) + dashUrl, default 30d', async () => {
+  const d = deps({
+    [MONEY_PATH]: (opts) => {
+      assert.equal(opts.query.days, 30);
+      return moneyPayload();
+    },
+  });
+  const out = await getMonetizationDigest.handler(d, { gameId: GAME, window: 30 });
+  // Headline consumes Track A's summary field names verbatim.
+  assert.equal(out.summary.robux, 125000);
+  assert.equal(out.summary.usdEstimate, 437.5);
+  assert.equal(out.summary.txns, 842);
+  assert.equal(out.summary.payingUsers, 310);
+  assert.equal(out.summary.arppuRobux, 403.23); // rounded
+  assert.equal(out.summary.conversionPct, null); // null passed through, never fabricated
+  assert.equal(out.summary.devexRate, 0.0035);
+  // Top items + whales passed through from Track A.
+  assert.equal(out.topItems[0].name, '500 Gems');
+  assert.equal(out.topItems[1].kind, 'gamepass');
+  assert.equal(out.topWhales.length, 2);
+  assert.equal(out.topWhales[0].userId, 99001);
+  assert.equal(out.topWhales[0].robux, 12000);
+  assert.equal(out.dashUrl, `http://localhost:3001/games/${GAME}/monetization`);
+});
+
+test('get_monetization_digest: empty data → zeroed headline, empty lists, null conversion, still has dashUrl', async () => {
+  const d = deps({ [MONEY_PATH]: {} });
+  const out = await getMonetizationDigest.handler(d, { gameId: GAME, window: 30 });
+  assert.equal(out.summary.robux, 0);
+  assert.equal(out.summary.payingUsers, 0);
+  assert.equal(out.summary.conversionPct, null);
+  assert.equal(out.summary.devexRate, null);
+  assert.equal(out.topItems.length, 0);
+  assert.equal(out.topWhales.length, 0);
+  assert.equal(out.dashUrl, `http://localhost:3001/games/${GAME}/monetization`);
+});
+
+test('get_monetization_digest: 403 plan_required → graceful degrade (planRequired payload, no throw)', async () => {
+  const d = deps({ [MONEY_PATH]: new ApiError(403, 'plan_required') });
+  const out = await getMonetizationDigest.handler(d, { gameId: GAME, window: 30 });
+  assert.equal(out.planRequired, true);
+  assert.equal(out.feature, 'monetization');
+  assert.equal(out.requiredPlan, 'pro');
+  assert.match(out.hint, /monetization|upgrade/i);
+  assert.equal(out.dashUrl, `http://localhost:3001/games/${GAME}/monetization`);
+});
+
+test('get_revenue_series: passes from/to/days + shapes series (robux/txns/payingUsers)', async () => {
+  const d = deps({
+    [MONEY_PATH]: (opts) => {
+      assert.equal(opts.query.from, '2026-06-01T00:00:00Z');
+      assert.equal(opts.query.to, '2026-06-30T00:00:00Z');
+      return moneyPayload();
+    },
+  });
+  const out = await getRevenueSeries.handler(d, {
+    gameId: GAME,
+    from: '2026-06-01T00:00:00Z',
+    to: '2026-06-30T00:00:00Z',
+  });
+  assert.equal(out.series.length, 2);
+  assert.equal(out.series[0].t, 1718000000);
+  assert.equal(out.series[1].robux, 85000);
+  assert.equal(out.series[1].payingUsers, 200);
+  assert.equal(out.window.from, '2026-06-01T00:00:00Z');
+  assert.equal(out.dashUrl, `http://localhost:3001/games/${GAME}/monetization`);
+});
+
+test('get_revenue_series: 403 plan_required → graceful degrade', async () => {
+  const d = deps({ [MONEY_PATH]: new ApiError(403, 'plan_required') });
+  const out = await getRevenueSeries.handler(d, { gameId: GAME, days: 30 });
+  assert.equal(out.planRequired, true);
+  assert.equal(out.feature, 'monetization');
+  assert.equal(out.dashUrl, `http://localhost:3001/games/${GAME}/monetization`);
+});
+
+test('monetization tools: no PAT or project key leaks into output', async () => {
+  const d = deps({ [MONEY_PATH]: moneyPayload() });
+  const dg = await getMonetizationDigest.handler(d, { gameId: GAME, window: 30 });
+  const sr = await getRevenueSeries.handler(d, { gameId: GAME, days: 30 });
+  for (const out of [dg, sr]) {
+    const json = JSON.stringify(out);
+    assert.ok(!json.includes('Bearer'), 'no Authorization header echoed');
+    assert.ok(!json.includes(KEY), 'no project key echoed');
+    assert.ok(!/blxt?_/.test(json), 'no PAT-shaped token echoed');
+  }
 });
 
 // ── digest composition ────────────────────────────────────────────────────────

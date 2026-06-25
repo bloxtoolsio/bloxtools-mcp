@@ -4,6 +4,8 @@
  *   triage_errors      — digest → top open groups → propose + optionally apply statuses
  *   fix_top_crash      — top group → events → source context → sourcemap → fix plan
  *   performance_review — perf digest → worst platform → series → propose perf fixes
+ *   revenue_review     — monetization digest → top items → whales → series → propose
+ *                        concrete monetization improvements
  *
  * Each returns a single user message that steers the agent through the BloxTools
  * tools in the right order. Kept as plain text builders so they are unit-testable.
@@ -45,5 +47,18 @@ export function performanceReviewPrompt({ gameId, window = '7' } = {}) {
     `4. Correlate any crash/timeout events and high marks with the trend — is a specific placeVersion, mark, or memory climb the driver?\n` +
     `5. Produce a concrete perf plan: the top 1–3 regressions, the likely cause (memory leak, expensive mark, physics load, a bad release version), and the change to make. Include the dashUrl.\n\n` +
     `Always include the performance dashUrl for anything you recommend acting on.`
+  );
+}
+
+export function revenueReviewPrompt({ gameId, window = '30' } = {}) {
+  const target = gameId ? `game ${gameId}` : 'my game (call list_games first to pick the gameId)';
+  return (
+    `Review the monetization health of ${target} and propose concrete improvements.\n\n` +
+    `1. Call get_monetization_digest (window=${window}) to orient: the headline (total Robux, estimated USD, transactions, paying users, ARPPU in Robux, conversion %, and the DevEx rate used). If it returns planRequired, stop and relay the upgrade link. Note that USD is an estimate via the DevEx rate, and that conversion % may be null (not yet measured in v1) — do not invent it.\n` +
+    `2. Look at the top-earning items (dev products + gamepasses) from the digest: which products drive most of the revenue, and is the mix concentrated or broad?\n` +
+    `3. Look at the top whales (highest-spending users): how concentrated is revenue among the top spenders? Flag if a few whales carry the game (a retention/whale-churn risk).\n` +
+    `4. Call get_revenue_series (days=${window}) to see whether daily Robux / transactions / paying users are trending up, spiking, or declining over the window.\n` +
+    `5. Produce a concrete monetization plan: the top 1–3 opportunities (e.g. a stalling product, an over-reliance on one item or one whale, a declining paying-user trend), the likely driver, and the change to make (pricing, new product, conversion funnel). Keep ARPPU and paying-user growth in view; be honest that USD figures are estimates.\n\n` +
+    `Always include the monetization dashUrl for anything you recommend acting on.`
   );
 }
