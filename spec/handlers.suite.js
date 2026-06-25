@@ -23,7 +23,7 @@ import { getErrorDigest } from '../src/tools/digest.js';
 import { getSourceContext } from '../src/tools/source-context.js';
 import { resolveInstancePathTool } from '../src/tools/sourcemap-tool.js';
 import { listReports, getReport, listIssues, getIssue, getAlertLog } from '../src/tools/reports.js';
-import { getPerformanceDigest, getPerformanceSeries } from '../src/tools/performance.js';
+import { getPerformanceDigest, getPerformanceSeries, getPerformanceDiagnosis } from '../src/tools/performance.js';
 import { getMonetizationDigest, getRevenueSeries } from '../src/tools/monetization.js';
 import { setErrorGroupStatus, setReportStatus, setIssueStatus } from '../src/tools/writes.js';
 import { ApiError, createApiClient, isPlanRequired } from '../src/api.js';
@@ -350,6 +350,132 @@ test('get_performance_series: 403 plan_required → graceful degrade', async () 
   const out = await getPerformanceSeries.handler(d, { gameId: GAME, days: 7 });
   assert.equal(out.planRequired, true);
   assert.equal(out.dashUrl, `http://localhost:3001/games/${GAME}/performance`);
+});
+
+// ── performance: diagnosis (Track A read contract §3 — diagnosis[] verbatim) ──
+const DIAG_PATH = 'GET /api/games/' + GAME + '/performance/diagnosis';
+
+function diagnosisPayload() {
+  return {
+    memory: {
+      totalMbAvg: 612.3456,
+      totalMbMax: 904.2,
+      categories: [
+        { tag: 'Signals', mbAvg: 42.1234, mbMax: 88.5, growthMbPerHr: 12.3456 },
+        { tag: 'LuaHeap', mbAvg: 220.0, mbMax: 260.0, growthMbPerHr: null },
+      ],
+      series: [
+        { t: 1718000000, tag: 'Signals', mbAvg: 30.123 },
+        { t: 1718086400, tag: 'Signals', mbAvg: 42.456 },
+      ],
+    },
+    byScript: [
+      { scriptPath: 'ServerScriptService.Combat.Damage', kind: 'connection', msP95: 8.4321, count: 4200, sharePct: 31.25 },
+      { scriptPath: 'ServerScriptService.AI.Pathfind', kind: 'spawn', msP95: 5.1, count: 1800, sharePct: 14.0 },
+    ],
+    slowFrames: {
+      count: 37,
+      worstMs: 142.7654,
+      topLabels: [
+        { label: 'ServerScriptService.Combat.Damage', count: 21, maxMs: 142.7 },
+        { label: 'PhysicsStep', count: 9, maxMs: 88.2 },
+      ],
+    },
+    versions: [
+      { placeVersion: 44, frameP95: 22.5, memAvgMb: 640, crashRatePerHr: 0.5, deltaFrameP95Pct: 120.0, deltaMemPct: 40.0 },
+      { placeVersion: 43, frameP95: 10.2, memAvgMb: 457, crashRatePerHr: 0.1, deltaFrameP95Pct: null, deltaMemPct: null },
+    ],
+    diagnosis: [
+      {
+        id: 'memory/Signals',
+        severity: 'critical',
+        category: 'memory',
+        signal: 'Signals +12MB/hr',
+        likelyCause: 'leaked event connections (not :Disconnect()ed)',
+        suggestion: 'Audit :Connect calls; disconnect on cleanup or use a janitor/maid.',
+        deepLink: 'http://localhost:3001/games/' + GAME + '/performance',
+      },
+      {
+        id: 'version/44',
+        severity: 'warn',
+        category: 'version',
+        signal: 'frame p95 +120% / memory +40% since v44',
+        likelyCause: 'a regression shipped in place version 44',
+        suggestion: 'Compare v44 against v43; consider rolling back or profiling the new code.',
+        deepLink: null,
+      },
+    ],
+  };
+}
+
+test('get_performance_diagnosis: returns memory/byScript/slowFrames/versions + diagnosis VERBATIM + dashUrl', async () => {
+  const payload = diagnosisPayload();
+  const d = deps({
+    [DIAG_PATH]: (opts) => {
+      assert.equal(opts.query.days, 7);
+      return payload;
+    },
+  });
+  const out = await getPerformanceDiagnosis.handler(d, { gameId: GAME, window: 7 });
+
+  // diagnosis[] is computed SERVER-SIDE — must be passed through VERBATIM (deep-equal
+  // to the backend payload, NOT reshaped/re-rounded/re-derived). This is THE seam.
+  assert.deepEqual(out.diagnosis, payload.diagnosis);
+  assert.equal(out.diagnosis[0].id, 'memory/Signals');
+  assert.equal(out.diagnosis[0].severity, 'critical');
+  assert.equal(out.diagnosis[0].likelyCause, 'leaked event connections (not :Disconnect()ed)');
+  // deepLink carried through verbatim (including the null one).
+  assert.equal(out.diagnosis[0].deepLink, `http://localhost:3001/games/${GAME}/performance`);
+  assert.equal(out.diagnosis[1].deepLink, null);
+
+  // Evidence: memory categories (with growth), byScript, slowFrames, versions present.
+  assert.equal(out.memory.totalMbAvg, 612.35);
+  assert.equal(out.memory.categories[0].tag, 'Signals');
+  assert.equal(out.memory.categories[0].growthMbPerHr, 12.35);
+  assert.equal(out.memory.categories[1].growthMbPerHr, null);
+  assert.equal(out.memory.series.length, 2);
+  assert.equal(out.byScript[0].scriptPath, 'ServerScriptService.Combat.Damage');
+  assert.equal(out.byScript[0].msP95, 8.43);
+  assert.equal(out.byScript[0].count, 4200);
+  assert.equal(out.slowFrames.count, 37);
+  assert.equal(out.slowFrames.worstMs, 142.77);
+  assert.equal(out.slowFrames.topLabels[0].label, 'ServerScriptService.Combat.Damage');
+  assert.equal(out.versions[0].placeVersion, 44);
+  assert.equal(out.versions[0].deltaFrameP95Pct, 120);
+  assert.equal(out.versions[1].deltaFrameP95Pct, null);
+
+  // Deep link to the Performance tab.
+  assert.equal(out.dashUrl, `http://localhost:3001/games/${GAME}/performance`);
+});
+
+test('get_performance_diagnosis: empty payload → empty arrays, null-safe, still has dashUrl', async () => {
+  const d = deps({ [DIAG_PATH]: {} });
+  const out = await getPerformanceDiagnosis.handler(d, { gameId: GAME, window: 7 });
+  assert.deepEqual(out.diagnosis, []);
+  assert.deepEqual(out.byScript, []);
+  assert.deepEqual(out.versions, []);
+  assert.deepEqual(out.memory.categories, []);
+  assert.equal(out.slowFrames.count, 0);
+  assert.equal(out.dashUrl, `http://localhost:3001/games/${GAME}/performance`);
+});
+
+test('get_performance_diagnosis: 403 plan_required → graceful degrade (planRequired payload, no throw)', async () => {
+  const d = deps({ [DIAG_PATH]: new ApiError(403, 'plan_required') });
+  const out = await getPerformanceDiagnosis.handler(d, { gameId: GAME, window: 7 });
+  assert.equal(out.planRequired, true);
+  assert.equal(out.feature, 'performance');
+  assert.equal(out.requiredPlan, 'pro');
+  assert.match(out.hint, /performance/i);
+  assert.equal(out.dashUrl, `http://localhost:3001/games/${GAME}/performance`);
+});
+
+test('get_performance_diagnosis: no PAT or project key leaks into output', async () => {
+  const d = deps({ [DIAG_PATH]: diagnosisPayload() });
+  const out = await getPerformanceDiagnosis.handler(d, { gameId: GAME, window: 7 });
+  const json = JSON.stringify(out);
+  assert.ok(!json.includes('Bearer'), 'no Authorization header echoed');
+  assert.ok(!json.includes(KEY), 'no project key echoed');
+  assert.ok(!/blxt?_/.test(json), 'no PAT-shaped token echoed');
 });
 
 test('api request(): real backend {error:{code,message,details}} 403 → isPlanRequired matches', async () => {

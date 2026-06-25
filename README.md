@@ -266,12 +266,16 @@ by default. (Against an older backend build that doesn't serve `token-info`, the
 
 Reads (need `read`): `list_games`, `get_overview`, `get_error_digest`, `list_error_groups`,
 `get_error_group`, `list_error_events`, `get_source_context`, `list_reports`, `get_report`,
-`list_issues`, `get_issue`, `get_alert_log`, `resolve_instance_path`.
+`list_issues`, `get_issue`, `get_alert_log`, `get_performance_diagnosis`, `get_performance_digest`,
+`get_performance_series`, `get_monetization_digest`, `get_revenue_series`, `resolve_instance_path`.
+(The performance and monetization reads are a Pro+ feature; on a free / downgraded account they
+return a `planRequired` payload with an upgrade link instead of an error.)
 
 Writes (need `manage`): `set_error_group_status`, `set_report_status`, `set_issue_status`.
 
-Prompts: `triage_errors`, `fix_top_crash`. Resource: `bloxtools://games/{gameId}/errors`
-(open-groups snapshot, listed per game).
+Prompts: `triage_errors`, `fix_top_crash`, `performance_review`, `revenue_review`. Resources (snapshot
+JSON, listed per game): `bloxtools://games/{gameId}/errors`, `bloxtools://games/{gameId}/performance`,
+`bloxtools://games/{gameId}/performance/diagnosis`, `bloxtools://games/{gameId}/monetization`.
 
 ## First session (5 lines)
 

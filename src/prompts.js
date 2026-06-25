@@ -41,11 +41,11 @@ export function performanceReviewPrompt({ gameId, window = '7' } = {}) {
   const target = gameId ? `game ${gameId}` : 'my game (call list_games first to pick the gameId)';
   return (
     `Review the performance health of ${target} and propose concrete fixes.\n\n` +
-    `1. Call get_performance_digest (window=${window}) to orient: the headline cards (p95 frame time, memory, physics FPS, crash rate, CCU), the worst client platform (lowest fps p10), the top custom marks, and recent crash events. If it returns planRequired, stop and relay the upgrade link.\n` +
-    `2. Single out the worst client platform from the digest — those players have the roughest frame rate. Note its fps p10 and ping.\n` +
-    `3. Call get_performance_series (surface="server", granularity="hour") to see whether frame time / memory / crash rate is trending up, spiking, or steady over the window. Pull surface="client" if the platform breakdown needs more detail.\n` +
-    `4. Correlate any crash/timeout events and high marks with the trend — is a specific placeVersion, mark, or memory climb the driver?\n` +
-    `5. Produce a concrete perf plan: the top 1–3 regressions, the likely cause (memory leak, expensive mark, physics load, a bad release version), and the change to make. Include the dashUrl.\n\n` +
+    `1. Call get_performance_diagnosis (window=${window}) FIRST to orient — this is the "what's wrong and what to change" surface. It returns the server-computed diagnosis[] (plain-language signals, likely causes, suggestions — computed on the backend; relay them VERBATIM, do not re-derive or second-guess), plus the evidence: memory by category (with growth MB/hr — the leak signal), top scripts by CPU, slow-frame attribution, and version regression. If it returns planRequired, stop and relay the upgrade link.\n` +
+    `2. Lead with the diagnosis[] entries, worst severity first (critical → warn → info). For each, restate the signal + likely cause + suggestion in your own summary and include its deepLink.\n` +
+    `3. Call get_performance_digest (window=${window}) for the headline cards (p95 frame time, memory, physics FPS, crash rate, CCU) and the worst client platform (lowest fps p10) — those players have the roughest frame rate. Note its fps p10 and ping.\n` +
+    `4. Call get_performance_series (surface="server", granularity="hour") to confirm whether the diagnosed issues (a leaking memory category, an expensive script, a slow-frame label, a bad release version) are trending up, spiking, or steady over the window. Pull surface="client" if the platform breakdown needs more detail.\n` +
+    `5. Produce a concrete perf plan: the top 1–3 issues from the diagnosis (memory leak in a named category, an expensive script handler, physics load, a regressed release version), the likely cause, and the change to make. Include the dashUrl.\n\n` +
     `Always include the performance dashUrl for anything you recommend acting on.`
   );
 }

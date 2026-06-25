@@ -8,6 +8,13 @@
  *                             dash deep link. "How is my game's perf right now?"
  *   get_performance_series  — series + clientByPlatform passthrough for the agent
  *                             to chart / drill into, window-bounded.
+ *   get_performance_diagnosis — the "what's wrong and what do I change" surface:
+ *                             the SERVER-COMPUTED diagnosis[] (returned VERBATIM —
+ *                             the plain-language signals/causes/suggestions are
+ *                             computed backend-side; we never re-derive them), plus
+ *                             memory categories + growth, top scripts by CPU,
+ *                             slow-frame attribution, and version regression, over
+ *                             Track A's `GET /api/games/:id/performance/diagnosis`.
  *
  * Gating: the read endpoint 403s `plan_required` on free / downgraded accounts
  * (EXACTLY the sourceContext gate, `{ feature:'performance', requiredPlan:'pro',
@@ -206,4 +213,127 @@ export const getPerformanceSeries = {
   },
 };
 
-export { presentSummary, presentPlatform, planRequiredResult };
+/** Shape one memory category row (Track A field names verbatim, null-safe). */
+function presentCategory(c = {}) {
+  return {
+    tag: c.tag ?? null,
+    mbAvg: round(c.mbAvg),
+    mbMax: round(c.mbMax),
+    growthMbPerHr:
+      typeof c.growthMbPerHr === 'number' ? round(c.growthMbPerHr) : null,
+  };
+}
+
+/** Shape one byScript (top-scripts-by-CPU) row (Track A field names verbatim). */
+function presentScript(s = {}) {
+  return {
+    scriptPath: previewText(s.scriptPath, 200),
+    kind: s.kind ?? null,
+    msP95: round(s.msP95),
+    count: typeof s.count === 'number' && Number.isFinite(s.count) ? Math.trunc(s.count) : 0,
+    sharePct: round(s.sharePct),
+  };
+}
+
+/** Shape one version-regression row (Track A field names verbatim, null-safe). */
+function presentVersion(v = {}) {
+  return {
+    placeVersion: v.placeVersion ?? null,
+    frameP95: round(v.frameP95),
+    memAvgMb: round(v.memAvgMb),
+    crashRatePerHr: round(v.crashRatePerHr),
+    deltaFrameP95Pct:
+      typeof v.deltaFrameP95Pct === 'number' ? round(v.deltaFrameP95Pct) : null,
+    deltaMemPct: typeof v.deltaMemPct === 'number' ? round(v.deltaMemPct) : null,
+  };
+}
+
+export const getPerformanceDiagnosis = {
+  name: 'get_performance_diagnosis',
+  title: 'Performance diagnosis — what is wrong & what to change',
+  description:
+    'CALL THIS FIRST for "what is wrong with my game\'s performance and what do I change?". This is the ' +
+    'orientation tool for perf: it returns the SERVER-COMPUTED diagnosis (plain-language signals, likely ' +
+    'causes, and concrete suggestions) for one game over a window (default 7 days) from Track A\'s ' +
+    'performance diagnosis read endpoint, VERBATIM — the heuristics run once on the backend so the ' +
+    'dashboard and this tool never diverge; do NOT re-derive or second-guess them. Alongside the ' +
+    'diagnosis it returns the evidence the rules fired on: memory by actionable category (avg/max + ' +
+    'growth MB/hr, the leak signal), top scripts by CPU (p95 ms, call count, share %), slow-frame ' +
+    'attribution (worst stall + the labels running when frames stalled), and version regression (frame ' +
+    'p95 / memory deltas per place version). Each diagnosis entry carries a `deepLink`; the result also ' +
+    'carries a `dashUrl` to the Performance tab. On a free / downgraded account the read is Pro+ gated → ' +
+    'returns `{ planRequired:true, ... }` with the upgrade link, never an error. Drill into the numbers ' +
+    'with get_performance_digest / get_performance_series.',
+  inputSchema: {
+    gameId: gameIdSchema,
+    window: z
+      .number()
+      .int()
+      .min(1)
+      .max(90)
+      .default(7)
+      .describe('Look-back window in days (1–90, default 7).'),
+  },
+  async handler({ client, dash }, { gameId, window }) {
+    let data;
+    try {
+      data = await client.get(`/api/games/${gameId}/performance/diagnosis`, {
+        query: { days: window },
+      });
+    } catch (err) {
+      if (isPlanRequired(err)) return planRequiredResult(dash, gameId);
+      throw err;
+    }
+
+    const mem = data?.memory ?? {};
+    const memory = {
+      totalMbAvg: round(mem.totalMbAvg),
+      totalMbMax: round(mem.totalMbMax),
+      categories: (mem.categories ?? []).map(presentCategory),
+      series: (mem.series ?? []).map((p) => ({
+        t: p.t ?? null,
+        tag: p.tag ?? null,
+        mbAvg: round(p.mbAvg),
+      })),
+    };
+
+    const byScript = (data?.byScript ?? []).slice(0, 20).map(presentScript);
+
+    const sf = data?.slowFrames ?? {};
+    const slowFrames = {
+      count: typeof sf.count === 'number' && Number.isFinite(sf.count) ? Math.trunc(sf.count) : 0,
+      worstMs: round(sf.worstMs),
+      topLabels: (sf.topLabels ?? []).map((l) => ({
+        label: previewText(l.label, 200),
+        count: typeof l.count === 'number' && Number.isFinite(l.count) ? Math.trunc(l.count) : 0,
+        maxMs: round(l.maxMs),
+      })),
+    };
+
+    const versions = (data?.versions ?? []).map(presentVersion);
+
+    // diagnosis[] is computed SERVER-SIDE (deterministic heuristics, SPRINT.md §4).
+    // Pass it through VERBATIM — the dashboard and the MCP must never diverge, so we
+    // do NOT reshape, re-round, or re-derive these entries.
+    const diagnosis = data?.diagnosis ?? [];
+
+    return {
+      window: { days: window },
+      memory,
+      byScript,
+      slowFrames,
+      versions,
+      diagnosis,
+      dashUrl: dash.performance(gameId),
+    };
+  },
+};
+
+export {
+  presentSummary,
+  presentPlatform,
+  presentCategory,
+  presentScript,
+  presentVersion,
+  planRequiredResult,
+};

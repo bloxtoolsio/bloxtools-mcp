@@ -22,6 +22,9 @@ import {
   PERFORMANCE_URI_TEMPLATE,
   makePerformanceResourceList,
   makePerformanceResourceRead,
+  PERFORMANCE_DIAGNOSIS_URI_TEMPLATE,
+  makePerformanceDiagnosisResourceList,
+  makePerformanceDiagnosisResourceRead,
   MONETIZATION_URI_TEMPLATE,
   makeMonetizationResourceList,
   makeMonetizationResourceRead,
@@ -194,6 +197,21 @@ export function buildServer(deps, scope) {
       mimeType: 'application/json',
     },
     makePerformanceResourceRead(deps.client, deps.dash),
+  );
+
+  // Resource: per-game performance diagnosis snapshot, listed dynamically from list_games.
+  server.registerResource(
+    'game-performance-diagnosis',
+    new ResourceTemplate(PERFORMANCE_DIAGNOSIS_URI_TEMPLATE, {
+      list: makePerformanceDiagnosisResourceList(deps.client, deps.dash),
+    }),
+    {
+      title: 'Performance diagnosis snapshot',
+      description:
+        'Current performance diagnosis (server-computed signals/causes/suggestions, memory categories, top scripts by CPU, slow frames, version regression) for a game, as JSON.',
+      mimeType: 'application/json',
+    },
+    makePerformanceDiagnosisResourceRead(deps.client, deps.dash),
   );
 
   // Resource: per-game monetization digest snapshot, listed dynamically from list_games.

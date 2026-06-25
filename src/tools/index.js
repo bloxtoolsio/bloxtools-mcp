@@ -9,7 +9,7 @@ import { getErrorDigest } from './digest.js';
 import { getSourceContext } from './source-context.js';
 import { resolveInstancePathTool } from './sourcemap-tool.js';
 import { listReports, getReport, listIssues, getIssue, getAlertLog } from './reports.js';
-import { getPerformanceDigest, getPerformanceSeries } from './performance.js';
+import { getPerformanceDigest, getPerformanceSeries, getPerformanceDiagnosis } from './performance.js';
 import { getMonetizationDigest, getRevenueSeries } from './monetization.js';
 import { setErrorGroupStatus, setReportStatus, setIssueStatus } from './writes.js';
 
@@ -26,6 +26,7 @@ export const READ_TOOLS = [
   listIssues,
   getIssue,
   getAlertLog,
+  getPerformanceDiagnosis,
   getPerformanceDigest,
   getPerformanceSeries,
   getMonetizationDigest,
