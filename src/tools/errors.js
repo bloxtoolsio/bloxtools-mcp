@@ -106,7 +106,9 @@ export const listErrorEvents = {
     'Sampled raw events for an error group, newest first: parsed stack frames (path/fn/line), ' +
     'breadcrumbs, and player/device context. Use a frame here — its `path` (an instance path) and ' +
     '`line` — as input to get_source_context (decrypt the real source) and resolve_instance_path ' +
-    '(find the local file). Cursor-paginated: pass back `nextCursor` to page.',
+    '(find the local file). Cursor-paginated: pass back `nextCursor` to page. ' +
+    'Note: `placeVersion` 0 means a Studio playtest / unpublished place (game.PlaceVersion ' +
+    'is 0 there) — treat it as “unknown version”, not version zero.',
   inputSchema: {
     gameId: gameIdSchema,
     groupId: z.string().min(1).describe('Error group id.'),
